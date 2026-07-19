@@ -24,6 +24,12 @@ def main():
     parser.add_argument("--models-dir", help="模型目录路径 (默认 ./models/)")
     parser.add_argument("--ocr-config", help="RapidOCR 配置文件路径")
     parser.add_argument("--threshold", type=float, default=0.5, help="版面检测置信度阈值 (默认 0.5)")
+    parser.add_argument(
+        "--backend",
+        choices=["auto", "openvino", "onnxruntime"],
+        default="auto",
+        help="推理后端 (默认 auto: Intel→openvino, 其他→onnxruntime)",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="静默模式，不打印初始化信息")
 
     args = parser.parse_args()
@@ -34,6 +40,7 @@ def main():
         models_dir=args.models_dir,
         ocr_config=args.ocr_config,
         layout_threshold=args.threshold,
+        backend=args.backend,
         verbose=not args.quiet,
     )
 

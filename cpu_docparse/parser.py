@@ -1,7 +1,11 @@
 """
 DocParser: 极简 CPU 文档解析核心模块
 
-链路: 版面检测(OpenVINO) → 全页OCR(OpenVINO) → 表格结构(ONNX Runtime) → Markdown
+链路: 版面检测 → 全页OCR → 表格结构(ONNX Runtime) → Markdown
+
+推理后端自动选择 (backend.py):
+- Intel x86_64 → OpenVINO (AMX/VNNI 加速)
+- AMD x86_64 / ARM64 / 其他 → ONNX Runtime
 """
 
 import time
@@ -12,9 +16,20 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from cpu_docparse.backend import (
+    Backend,
+    get_backend_info,
+    select_backend,
+)
+
 # 默认模型路径 (相对于项目根目录)
 _DEFAULT_MODELS_DIR = Path(__file__).parent.parent / "models"
-_DEFAULT_OCR_CONFIG = Path(__file__).parent.parent / "rapidocr_openvino.yaml"
+
+# RapidOCR 配置: 按后端区分
+_OCR_CONFIGS = {
+    Backend.OPENVINO: Path(__file__).parent.parent / "rapidocr_openvino.yaml",
+    Backend.ONNXRUNTIME: Path(__file__).parent.parent / "rapidocr_onnxruntime.yaml",
+}
 
 # SLANet 字符字典 (来自 inference.yml, merge_no_span_structure=true)
 _SLANET_DICT_RAW = [
@@ -51,10 +66,13 @@ class DocParser:
 
     将扫描件/图片解析为结构化 Markdown。全 CPU 推理，无需 GPU。
 
+    推理后端自动选择：Intel CPU 用 OpenVINO，AMD/ARM/其他用 ONNX Runtime。
+
     Args:
         models_dir: 模型文件目录，默认 ./models/
-        ocr_config: RapidOCR 配置文件路径，默认 ./rapidocr_openvino.yaml
+        ocr_config: RapidOCR 配置文件路径，默认按后端自动选择
         layout_threshold: 版面检测置信度阈值，默认 0.5
+        backend: 推理后端 "auto" / "openvino" / "onnxruntime"，默认 auto
         verbose: 是否打印初始化信息
 
     Example:
@@ -69,32 +87,51 @@ class DocParser:
         models_dir: Optional[str] = None,
         ocr_config: Optional[str] = None,
         layout_threshold: float = 0.5,
+        backend: str = "auto",
         verbose: bool = True,
     ):
-        from openvino import Core
         from rapidocr import RapidOCR
         import onnxruntime as ort
 
         self._models_dir = Path(models_dir) if models_dir else _DEFAULT_MODELS_DIR
-        self._ocr_config = str(ocr_config) if ocr_config else str(_DEFAULT_OCR_CONFIG)
         self._layout_threshold = layout_threshold
         self._verbose = verbose
 
+        # 自动选择推理后端
+        self._backend = select_backend(backend if backend != "auto" else None)
+        self._backend_info = get_backend_info(self._backend)
+
+        # OCR 配置: 用户指定 > 按后端默认
+        if ocr_config:
+            self._ocr_config = str(ocr_config)
+        else:
+            self._ocr_config = str(_OCR_CONFIGS[self._backend])
+
         self._log("初始化 DocParser...")
+        self._log(f"  推理后端: {self._backend.value} "
+                  f"(CPU: {self._backend_info['cpu_vendor']}/{self._backend_info['arch']})")
 
-        # 版面检测: OpenVINO
+        # 版面检测
         t0 = time.perf_counter()
-        core = Core()
         layout_path = str(self._models_dir / "PP-DocLayoutV3.onnx")
-        self._layout_model = core.compile_model(layout_path, "CPU")
-        self._log(f"  版面检测 (OpenVINO): {time.perf_counter()-t0:.2f}s")
+        if self._backend == Backend.OPENVINO:
+            from openvino import Core
+            core = Core()
+            self._layout_model = core.compile_model(layout_path, "CPU")
+            self._layout_engine = "openvino"
+        else:
+            self._layout_model = ort.InferenceSession(
+                layout_path, providers=["CPUExecutionProvider"]
+            )
+            self._layout_engine = "onnxruntime"
+        self._log(f"  版面检测 ({self._layout_engine}): {time.perf_counter()-t0:.2f}s")
 
-        # OCR: RapidOCR (OpenVINO 后端, PP-OCRv6 Small)
+        # OCR: RapidOCR (后端由配置文件决定)
         t0 = time.perf_counter()
         self._ocr = RapidOCR(config_path=self._ocr_config)
-        self._log(f"  OCR (RapidOCR/OpenVINO): {time.perf_counter()-t0:.2f}s")
+        self._log(f"  OCR (RapidOCR/{self._backend.value}): {time.perf_counter()-t0:.2f}s")
 
-        # 表格结构识别: SLANet (ONNX Runtime)
+        # 表格结构识别: SLANet (ONNX Runtime, 跨平台统一)
         t0 = time.perf_counter()
         opts = ort.SessionOptions()
         opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -167,7 +204,7 @@ class DocParser:
             print(f"[DocParser] {msg}")
 
     def _detect_layout(self, img_np: np.ndarray) -> list:
-        """版面检测 (OpenVINO, PP-DocLayoutV3)"""
+        """版面检测 (PP-DocLayoutV3, 后端自动)"""
         h, w = img_np.shape[:2]
         input_size = 800
 
@@ -178,13 +215,22 @@ class DocParser:
         im_shape = np.array([[input_size, input_size]], dtype=np.float32)
         scale_factor = np.array([[input_size / h, input_size / w]], dtype=np.float32)
 
-        result = self._layout_model({
-            "im_shape": im_shape,
-            "image": img_input,
-            "scale_factor": scale_factor,
-        })
-
-        det_output = list(result.values())[0]
+        if self._layout_engine == "openvino":
+            result = self._layout_model({
+                "im_shape": im_shape,
+                "image": img_input,
+                "scale_factor": scale_factor,
+            })
+            det_output = list(result.values())[0]
+        else:
+            det_output = self._layout_model.run(
+                None,
+                {
+                    "im_shape": im_shape,
+                    "image": img_input,
+                    "scale_factor": scale_factor,
+                },
+            )[0]
 
         regions = []
         for det in det_output:

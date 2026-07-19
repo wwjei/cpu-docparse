@@ -1,0 +1,88 @@
+Global:
+  text_score: 0.5
+  use_det: true
+  use_cls: false
+  use_rec: true
+  min_height: 30
+  width_height_ratio: 8
+  max_side_len: 2000
+  min_side_len: 30
+  return_word_box: false
+  return_single_char_box: false
+  font_path: null
+  log_level: info
+  model_root_dir: null
+Det:
+  engine_type: onnxruntime
+  lang_type: ch
+  limit_side_len: 960
+  limit_type: min
+  max_candidates: 1000
+  mean:
+  - 0.5
+  - 0.5
+  - 0.5
+  model_dir: null
+  model_path: null
+  model_type: small
+  ocr_version: PP-OCRv6
+  score_mode: fast
+  std:
+  - 0.5
+  - 0.5
+  - 0.5
+  task_type: det
+  thresh: 0.3
+  unclip_ratio: 1.6
+  use_dilation: true
+  box_thresh: 0.5
+Cls:
+  engine_type: onnxruntime
+  cls_batch_num: 6
+  cls_image_shape:
+  - 3
+  - 48
+  - 192
+  cls_thresh: 0.9
+  label_list:
+  - '0'
+  - '180'
+  lang_type: ch
+  model_dir: null
+  model_path: null
+  model_type: mobile
+  ocr_version: PP-OCRv4
+  task_type: cls
+Rec:
+  engine_type: onnxruntime
+  lang_type: ch
+  model_type: small
+  ocr_version: PP-OCRv6
+  task_type: rec
+  model_path: null
+  model_dir: null
+  rec_keys_path: null
+  rec_img_shape:
+  - 3
+  - 48
+  - 320
+  rec_batch_num: 6
+EngineConfig:
+  onnxruntime:
+    intra_op_num_threads: 4
+    inter_op_num_threads: -1
+    enable_cpu_mem_arena: false
+    cpu_ep_cfg:
+      arena_extend_strategy: "kSameAsRequested"
+    use_cuda: false
+    cuda_ep_cfg:
+      device_id: 0
+      arena_extend_strategy: "kNextPowerOfTwo"
+      cudnn_conv_algo_search: "EXHAUSTIVE"
+      do_copy_in_default_stream: true
+    use_dml: false
+    dml_ep_cfg: null
+    use_cann: false
+    cann_ep_cfg: null
+    use_coreml: false
+    coreml_ep_cfg: null

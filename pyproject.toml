@@ -10,15 +10,19 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 dependencies = [
-    "openvino>=2024.0",
     "onnxruntime>=1.17",
-    "rapidocr[openvino]>=1.4",
+    "rapidocr[onnxruntime]>=1.4",
     "opencv-python>=4.8",
     "numpy>=1.24",
     "pillow>=10.0",
 ]
 
 [project.optional-dependencies]
+# Intel CPU 推荐: OpenVINO 提供 AMX/VNNI 加速
+intel = [
+    "openvino>=2024.0",
+    "rapidocr[openvino]>=1.4",
+]
 dev = [
     "paddlepaddle>=3.0",
     "paddle2onnx>=1.2",

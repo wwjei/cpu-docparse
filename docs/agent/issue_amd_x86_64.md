@@ -21,7 +21,7 @@
 git clone https://github.com/wwjei/cpu-docparse.git
 cd cpu-docparse
 python -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install -e .   # 通用安装即可，AMD 自动走 ONNX Runtime
 ```
 
 ### 2. 下载模型
@@ -30,24 +30,18 @@ pip install -e .
 bash scripts/download_models.sh
 ```
 
-### 3. 修改推理后端
+### 3. 确认后端自动选择
 
-当前 `cpu_docparse/parser.py` 中：
-- Layout 检测使用 OpenVINO（`openvino.runtime`）
-- OCR 使用 RapidOCR + OpenVINO 后端
+代码已支持自动选择后端（`cpu_docparse/backend.py`），AMD CPU 会自动走 ONNX Runtime，
+**无需修改代码**。验证一下：
 
-AMD 环境需要：
-- 将 Layout 检测改为 ONNX Runtime 推理（模型已是 ONNX 格式）
-- RapidOCR 配置改为 `rapidocr_onnxruntime` 后端（修改 `rapidocr_openvino.yaml` 或新建 `rapidocr_onnxruntime.yaml`）
-- SLANet 已使用 ONNX Runtime，无需修改
-
-具体修改点：
-```python
-# parser.py _detect_layout 方法中
-# 替换 OpenVINO InferenceEngine 为 onnxruntime.InferenceSession
-import onnxruntime as ort
-session = ort.InferenceSession("models/PP-DocLayoutV3.onnx")
+```bash
+python -c "from cpu_docparse.backend import select_backend, get_backend_info; \
+  b=select_backend(); print(b.value); print(get_backend_info(b))"
+# 期望输出: onnxruntime
 ```
+
+如需强制指定后端对比：`DocParser(backend="onnxruntime")` 或 CLI `--backend onnxruntime`。
 
 ### 4. 运行测试
 
@@ -78,9 +72,9 @@ pip install onnxruntime-zendnn
 
 ## 输出要求
 
-1. 更新 README.md 中 "AMD x86_64" 行的性能数据
+1. 更新 README.md 中 "AMD x86_64" 行的性能数据（替换预估值）
 2. 在 `docs/phase.md` 中追加 AMD 验证记录
-3. 如有代码修改（后端切换），提交 PR 并说明
+3. 如发现后端自动选择有误或需调优，提交 PR 并说明
 4. 将验证结论回复到本 Issue
 
 ## 已知问题

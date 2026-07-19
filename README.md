@@ -12,7 +12,8 @@
 # 1. 安装
 git clone https://github.com/wwjei/cpu-docparse.git
 cd cpu-docparse
-pip install -e .
+pip install -e .              # 通用安装 (ONNX Runtime, 适用 AMD/ARM/Intel)
+pip install -e ".[intel]"     # Intel CPU 推荐 (额外启用 OpenVINO 加速)
 
 # 2. 获取版面检测模型 (约125MB, 超GitHub限制未入库)
 pip install paddlepaddle paddle2onnx paddlex   # 仅转换时需要
@@ -21,6 +22,10 @@ bash scripts/download_models.sh
 # 3. 使用
 python -m cpu_docparse tests/doc_with_table.png
 ```
+
+> **推理后端自动选择**：库会根据 CPU 自动挑选最优引擎 —— Intel CPU 用 OpenVINO
+> (AMX/VNNI 加速)，AMD/ARM/其他用 ONNX Runtime。无需手动配置。
+> 也可用 `DocParser(backend="onnxruntime")` 或 CLI `--backend` 强制指定。
 
 ### 作为库调用
 
@@ -53,6 +58,7 @@ cpu-docparse/
 ├── cpu_docparse/           # 库代码 (pip install -e . 后可 import)
 │   ├── __init__.py         # 入口: from cpu_docparse import DocParser
 │   ├── __main__.py         # CLI: python -m cpu_docparse
+│   ├── backend.py          # 推理后端自动选择 (Intel→OpenVINO, 其他→ONNX Runtime)
 │   └── parser.py           # 核心解析器
 ├── models/                 # 模型文件
 │   └── SLANet_fixed.onnx   # 表格结构模型 (7.5MB, 已入库)
@@ -62,11 +68,13 @@ cpu-docparse/
 │   └── paddleocr_benchmark.py
 ├── docs/                   # 文档
 │   ├── phase.md            # 完整测试记录 (Phase 1-7)
-│   └── 文档解析服务_技术报告.md
+│   ├── 文档解析服务_技术报告.md
+│   └── agent/              # agent 协作指南 + 架构验证 Issue 模板
 ├── scripts/
 │   └── download_models.sh  # 下载 PP-DocLayoutV3 并转 ONNX
 ├── tests/                  # 测试文档
-├── rapidocr_openvino.yaml  # OCR 后端配置
+├── rapidocr_openvino.yaml  # OCR 后端配置 (Intel/OpenVINO)
+├── rapidocr_onnxruntime.yaml  # OCR 后端配置 (AMD/ARM/ONNX Runtime)
 ├── pyproject.toml          # 包定义
 └── README.md
 ```
@@ -77,11 +85,14 @@ cpu-docparse/
 
 ```
 输入图片 (扫描件/截图)
-  ├─ 版面检测  PP-DocLayoutV3 (OpenVINO)    → 25 类区域 + bbox + 阅读顺序
-  ├─ 全页 OCR  PP-OCRv6 Small (OpenVINO)     → 文字行 + 坐标 (一次推理)
+  ├─ 版面检测  PP-DocLayoutV3                → 25 类区域 + bbox + 阅读顺序
+  ├─ 全页 OCR  PP-OCRv6 Small                → 文字行 + 坐标 (一次推理)
   ├─ 表格结构  SLANet (ONNX Runtime)         → 行列结构 (支持合并单元格)
   ├─ 坐标分配  纯算法                         → OCR 行归入版面区域
   └─ Markdown  纯算法                         → 按阅读顺序拼接输出
+
+推理后端 (自动选择):
+  Intel CPU → OpenVINO (AMX/VNNI)   |   AMD/ARM/其他 → ONNX Runtime
 ```
 
 ---
@@ -115,14 +126,27 @@ cpu-docparse/
 
 ## 多架构支持计划
 
-当前 OpenVINO 后端在 Intel CPU 上性能最优。其他架构需要验证 ONNX Runtime 通用路径或各自最优后端。
+**同一份代码，自动适配。** 推理后端由 `cpu_docparse/backend.py` 根据 CPU 自动选择，
+无需为不同架构维护分支代码。Intel 走 OpenVINO，其余走 ONNX Runtime。
 
-| 架构 | 推荐后端 | 状态 | Issue |
-|------|---------|------|-------|
-| Intel x86_64 | OpenVINO | ✅ 已验证 | — |
-| AMD x86_64 (EPYC/Ryzen) | ONNX Runtime / ZenDNN | ⏳ 待验证 | #1 |
-| ARM64 (鲲鹏/飞腾/Ampere/Apple M) | ONNX Runtime + ACL | ⏳ 待验证 | #2 |
-| NVIDIA GPU (可选加速) | ONNX Runtime + CUDA | 📋 规划中 | #3 |
+| 架构 | 自动选择后端 | 加速特性 | 状态 | Issue |
+|------|---------|---------|------|-------|
+| Intel x86_64 | OpenVINO | AMX / VNNI | ✅ 已验证 | — |
+| AMD x86_64 (EPYC/Ryzen) | ONNX Runtime | ZenDNN (可选) | ⏳ 待验证 | #1 |
+| ARM64 (鲲鹏/飞腾/Ampere/Apple M) | ONNX Runtime | ACL / XNNPACK | ⏳ 待验证 | #2 |
+| NVIDIA GPU (可选加速) | ONNX Runtime | CUDA EP | 📋 规划中 | #3 |
+
+**各架构预估运行配置**（待对应 Issue 实测确认）：
+
+| 架构 | 版面检测 | OCR | 表格结构 | 预估单页耗时 |
+|------|---------|-----|---------|-------------|
+| Intel x86_64 (实测) | OpenVINO | OpenVINO | ONNX Runtime | ~1,323ms |
+| AMD x86_64 (预估) | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~1,500-2,000ms |
+| ARM64 (预估) | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~1,800-2,500ms |
+
+> AMD/ARM 预估基于 ONNX Runtime 通用 CPU 路径，无 Intel 专用指令集加速。
+> 实际数据以 [Issue #1](https://github.com/wwjei/cpu-docparse/issues/1) /
+> [Issue #2](https://github.com/wwjei/cpu-docparse/issues/2) 验证结果为准。
 
 **目标: 在各类常见服务端架构上都支持高效运行。**
 

@@ -39,12 +39,18 @@ bash scripts/download_models.sh
 
 如果 PaddleX 在 ARM64 上不可用，可直接从 Release 或网盘下载预转换的 ONNX 模型文件放入 `models/` 目录。
 
-### 3. 修改推理后端
+### 3. 确认后端自动选择
 
-同 AMD 验证，需要：
-- Layout 检测：OpenVINO → ONNX Runtime
-- OCR：RapidOCR OpenVINO 后端 → ONNX Runtime 后端
-- SLANet：已是 ONNX Runtime，无需修改
+代码已支持自动选择后端（`cpu_docparse/backend.py`），ARM64 会自动走 ONNX Runtime，
+**无需修改代码**。验证：
+
+```bash
+python -c "from cpu_docparse.backend import select_backend, get_backend_info; \
+  b=select_backend(); print(b.value); print(get_backend_info(b))"
+# 期望输出: onnxruntime
+```
+
+如需强制指定：`DocParser(backend="onnxruntime")` 或 CLI `--backend onnxruntime`。
 
 ### 4. 可选：ARM 加速
 
