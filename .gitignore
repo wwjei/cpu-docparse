@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Large model files (exceed GitHub 100MB limit) — fetch via download_models.sh
+models/PP-DocLayoutV3.onnx
+
+# Original (buggy) SLANet export — only the fixed version is needed
+models/SLANet.onnx
+
+# Temp/intermediate test crops
+test_docs/_tmp_*.png
+test_docs/table_crop.png
+
+# OS / editor
+.DS_Store
+*.swp
