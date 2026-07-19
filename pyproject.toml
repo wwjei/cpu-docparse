@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cpu-docparse"
+version = "0.1.0"
+description = "极简 CPU 文档解析：扫描件/图片 → 结构化 Markdown，无需 GPU"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+dependencies = [
+    "openvino>=2024.0",
+    "onnxruntime>=1.17",
+    "rapidocr[openvino]>=1.4",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "paddlepaddle>=3.0",
+    "paddle2onnx>=1.2",
+    "paddlex>=3.0",
+]
+
+[project.scripts]
+cpu-docparse = "cpu_docparse.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["cpu_docparse*"]
