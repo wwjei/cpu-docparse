@@ -64,19 +64,29 @@ if not os.path.isdir(pd_dir) or not glob.glob(os.path.join(pd_dir, "**/*.pdmodel
                     break
     print(f"    model dir: {pd_dir}")
 
-# Locate the .pdmodel / .pdiparams files
+# Locate the model definition file (.pdmodel or .json for Paddle 3.0 PIR format)
 pdmodel = None
 for root, _, files in os.walk(pd_dir):
     for f in files:
         if f.endswith(".pdmodel"):
             pdmodel = os.path.join(root, f)
+            break
+    if pdmodel:
+        break
+    for f in files:
+        if f == "inference.json":
+            pdmodel = os.path.join(root, f)
+            break
     if pdmodel:
         break
 if pdmodel is None:
-    sys.exit("    ERROR: could not locate .pdmodel under " + pd_dir + "\n"
+    sys.exit("    ERROR: could not locate .pdmodel or inference.json under " + pd_dir + "\n"
              "    请手动下载: https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-DocLayoutV3_infer.tar\n"
              "    解压到 models/ 目录后重新运行本脚本")
-pdiparams = pdmodel[:-len(".pdmodel")] + ".pdiparams"
+if pdmodel.endswith(".pdmodel"):
+    pdiparams = pdmodel[:-len(".pdmodel")] + ".pdiparams"
+else:
+    pdiparams = os.path.join(os.path.dirname(pdmodel), "inference.pdiparams")
 
 out_onnx = os.path.join(models_dir, "PP-DocLayoutV3.onnx")
 print(f"    converting {pdmodel} -> {out_onnx}")
