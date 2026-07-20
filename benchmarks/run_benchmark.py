@@ -10,11 +10,72 @@
 
 import argparse
 import json
+import os
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+
+def collect_system_info() -> dict:
+    """收集机器配置: CPU 型号/核心数/频率、内存、OS 等"""
+    info = {
+        "os": f"{platform.system()} {platform.release()}",
+        "python": platform.python_version(),
+        "arch": platform.machine(),
+        "cpu_model": "unknown",
+        "cpu_sockets": None,
+        "cpu_cores_physical": None,
+        "cpu_threads": os.cpu_count(),
+        "cpu_max_mhz": None,
+        "mem_total_gb": None,
+    }
+
+    # lscpu (Linux)
+    try:
+        out = subprocess.check_output(["lscpu"], text=True, timeout=5)
+        for line in out.splitlines():
+            if ":" not in line:
+                continue
+            k, v = line.split(":", 1)
+            k, v = k.strip(), v.strip()
+            if k == "Model name":
+                info["cpu_model"] = v
+            elif k == "Socket(s)":
+                info["cpu_sockets"] = int(v)
+            elif k == "Core(s) per socket":
+                info["cpu_cores_physical"] = int(v) * (info["cpu_sockets"] or 1)
+            elif k == "CPU max MHz":
+                info["cpu_max_mhz"] = round(float(v))
+    except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
+        pass
+
+    # /proc/cpuinfo fallback for model name
+    if info["cpu_model"] == "unknown":
+        try:
+            with open("/proc/cpuinfo") as f:
+                for line in f:
+                    if line.startswith("model name"):
+                        info["cpu_model"] = line.split(":", 1)[1].strip()
+                        break
+        except OSError:
+            pass
+
+    # 内存
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal"):
+                    kb = int(line.split()[1])
+                    info["mem_total_gb"] = round(kb / 1024 / 1024, 1)
+                    break
+    except (OSError, ValueError):
+        pass
+
+    return info
 
 
 def main():
@@ -91,8 +152,29 @@ def main():
     print(f"\nmin={min_total*1000:.0f}ms  max={max_total*1000:.0f}ms  avg={avg_total*1000:.0f}ms")
     print(f"吞吐: {1/avg_total:.2f} pages/s")
 
+    # 机器配置
+    sysinfo = collect_system_info()
+    print(f"\n{'='*60}")
+    print("机器配置")
+    print(f"{'='*60}")
+    print(f"OS:        {sysinfo['os']}")
+    print(f"Python:    {sysinfo['python']}")
+    print(f"CPU:       {sysinfo['cpu_model']}")
+    cores_desc = []
+    if sysinfo["cpu_cores_physical"]:
+        cores_desc.append(f"{sysinfo['cpu_cores_physical']} 物理核")
+    if sysinfo["cpu_threads"]:
+        cores_desc.append(f"{sysinfo['cpu_threads']} 线程")
+    if cores_desc:
+        print(f"核心:      {' / '.join(cores_desc)}")
+    if sysinfo["cpu_max_mhz"]:
+        print(f"最大频率:  {sysinfo['cpu_max_mhz']} MHz")
+    if sysinfo["mem_total_gb"]:
+        print(f"内存:      {sysinfo['mem_total_gb']} GB")
+
     # 输出 JSON 方便记录
     summary = {
+        "system": sysinfo,
         "backend": info,
         "image": args.image,
         "warmup": args.warmup,

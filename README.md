@@ -114,9 +114,20 @@ cpu-docparse/
 > 测试环境: 沙箱受限约 1 核 Intel Xeon, 8GB RAM
 > 生产预估 (4核): 单页 400-600ms, 3 Worker 并发 5-6 pages/s
 
-### AMD x86_64 (待验证 ⏳)
+### AMD x86_64 (已验证 ✅)
 
-→ 见 [Issue #1](https://github.com/wwjei/cpu-docparse/issues/1)
+| 阶段 | 模型 | 后端 | 耗时 | 占比 |
+|------|------|------|------|------|
+| 版面检测 | PP-DocLayoutV3 (124.5MB) | ONNX Runtime | 558ms | 28% |
+| 全页 OCR | PP-OCRv6 Small (30MB) | ONNX Runtime | 1,364ms | 68% |
+| 表格结构 | SLANet (7.4MB) | ONNX Runtime | 81ms | 4% |
+| 坐标分配 + Markdown | 纯算法 | — | <1ms | ~0% |
+| **总计** | | | **2,002ms** | **0.50 pages/s** |
+
+> 测试环境: Ubuntu 22.04, AMD x86_64, ONNX Runtime 1.23.2 (CPUExecutionProvider)
+> 5 次平均 (warmup 2 次后): min=1,984ms / max=2,044ms / avg=2,002ms
+> 复现: `python benchmarks/run_benchmark.py tests/doc_with_table.png --runs 5 --warmup 2`
+> 详见 [Issue #1](https://github.com/wwjei/cpu-docparse/issues/1)
 
 ### ARM64 / aarch64 (待验证 ⏳)
 
@@ -132,20 +143,19 @@ cpu-docparse/
 | 架构 | 自动选择后端 | 加速特性 | 状态 | Issue |
 |------|---------|---------|------|-------|
 | Intel x86_64 | OpenVINO | AMX / VNNI | ✅ 已验证 | — |
-| AMD x86_64 (EPYC/Ryzen) | ONNX Runtime | ZenDNN (可选) | ⏳ 待验证 | #1 |
+| AMD x86_64 (EPYC/Ryzen) | ONNX Runtime | ZenDNN (可选) | ✅ 已验证 | #1 |
 | ARM64 (鲲鹏/飞腾/Ampere/Apple M) | ONNX Runtime | ACL / XNNPACK | ⏳ 待验证 | #2 |
 | NVIDIA GPU (可选加速) | ONNX Runtime | CUDA EP | 📋 规划中 | #3 |
 
-**各架构预估运行配置**（待对应 Issue 实测确认）：
+**各架构运行配置**：
 
-| 架构 | 版面检测 | OCR | 表格结构 | 预估单页耗时 |
+| 架构 | 版面检测 | OCR | 表格结构 | 实测单页耗时 |
 |------|---------|-----|---------|-------------|
-| Intel x86_64 (实测) | OpenVINO | OpenVINO | ONNX Runtime | ~1,323ms |
-| AMD x86_64 (预估) | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~1,500-2,000ms |
+| Intel x86_64 | OpenVINO | OpenVINO | ONNX Runtime | ~1,323ms |
+| AMD x86_64 | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~2,002ms |
 | ARM64 (预估) | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~1,800-2,500ms |
 
-> AMD/ARM 预估基于 ONNX Runtime 通用 CPU 路径，无 Intel 专用指令集加速。
-> 实际数据以 [Issue #1](https://github.com/wwjei/cpu-docparse/issues/1) /
+> ARM64 预估基于 ONNX Runtime 通用 CPU 路径，实际数据以
 > [Issue #2](https://github.com/wwjei/cpu-docparse/issues/2) 验证结果为准。
 
 **目标: 在各类常见服务端架构上都支持高效运行。**
