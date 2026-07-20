@@ -47,9 +47,16 @@ def collect_system_info() -> dict:
             elif k == "Socket(s)":
                 info["cpu_sockets"] = int(v)
             elif k == "Core(s) per socket":
-                info["cpu_cores_physical"] = int(v) * (info["cpu_sockets"] or 1)
+                info["cpu_cores_per_socket"] = int(v)
+            elif k == "CPU(s)":
+                info["cpu_threads"] = int(v)
             elif k == "CPU max MHz":
                 info["cpu_max_mhz"] = round(float(v))
+        # 物理核 = sockets × cores_per_socket (虚拟化环境可能不准, 取 CPU(s) 兜底)
+        sockets = info.get("cpu_sockets") or 1
+        cores_per = info.get("cpu_cores_per_socket") or 1
+        calc = sockets * cores_per
+        info["cpu_cores_physical"] = max(calc, info["cpu_threads"] or 1) if calc > 1 else (info["cpu_threads"] or 1)
     except (FileNotFoundError, subprocess.TimeoutExpired, ValueError):
         pass
 

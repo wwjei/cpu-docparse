@@ -118,14 +118,14 @@ cpu-docparse/
 
 | 阶段 | 模型 | 后端 | 耗时 | 占比 |
 |------|------|------|------|------|
-| 版面检测 | PP-DocLayoutV3 (124.5MB) | ONNX Runtime | 558ms | 28% |
-| 全页 OCR | PP-OCRv6 Small (30MB) | ONNX Runtime | 1,364ms | 68% |
-| 表格结构 | SLANet (7.4MB) | ONNX Runtime | 81ms | 4% |
+| 版面检测 | PP-DocLayoutV3 (124.5MB) | ONNX Runtime | 508ms | 25% |
+| 全页 OCR | PP-OCRv6 Small (30MB) | ONNX Runtime | 1,423ms | 70% |
+| 表格结构 | SLANet (7.4MB) | ONNX Runtime | 91ms | 5% |
 | 坐标分配 + Markdown | 纯算法 | — | <1ms | ~0% |
-| **总计** | | | **2,002ms** | **0.50 pages/s** |
+| **总计** | | | **2,022ms** | **0.49 pages/s** |
 
-> 测试环境: Ubuntu 22.04, AMD x86_64, ONNX Runtime 1.23.2 (CPUExecutionProvider)
-> 5 次平均 (warmup 2 次后): min=1,984ms / max=2,044ms / avg=2,002ms
+> 测试环境: Ubuntu 22.04, AMD EPYC 9334 32-Core (容器限 1 核), 63GB RAM, ONNX Runtime 1.23.2
+> 5 次平均 (warmup 2 次后): min=1,858ms / max=2,202ms / avg=2,022ms
 > 复现: `python benchmarks/run_benchmark.py tests/doc_with_table.png --runs 5 --warmup 2`
 > 详见 [Issue #1](https://github.com/wwjei/cpu-docparse/issues/1)
 
@@ -152,7 +152,7 @@ cpu-docparse/
 | 架构 | 版面检测 | OCR | 表格结构 | 实测单页耗时 |
 |------|---------|-----|---------|-------------|
 | Intel x86_64 | OpenVINO | OpenVINO | ONNX Runtime | ~1,323ms |
-| AMD x86_64 | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~2,002ms |
+| AMD x86_64 | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~2,022ms |
 | ARM64 (预估) | ONNX Runtime | ONNX Runtime | ONNX Runtime | ~1,800-2,500ms |
 
 > ARM64 预估基于 ONNX Runtime 通用 CPU 路径，实际数据以
