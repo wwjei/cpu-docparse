@@ -95,6 +95,57 @@ python -m onnxruntime.quantization.preprocess \
 > 测试环境: AMD EPYC 9334 32-Core (容器限 1 核), Ubuntu 22.04, ONNX Runtime 1.23.2
 > OCR 是主要瓶颈 (70%)，优化应优先针对 OCR 阶段。
 
+## Intel vs AMD OCR 性能差异分析
+
+### 数据对比
+
+| | OCR 耗时 | 后端 | CPU | 备注 |
+|---|---------|------|-----|------|
+| Intel | 731ms | OpenVINO | Xeon (AMX/VNNI) | 沙箱受限 ~1 核, 8GB |
+| AMD | 1,423ms | ONNX Runtime | EPYC 9334 (Zen 4) | 容器限 1 核, 63GB |
+
+OCR 阶段差距约 2 倍，但 layout 检测 AMD 反而更快 (508ms vs 799ms)。
+
+### 原因拆解
+
+**1. OpenVINO 在 Intel 上有专用优化路径（主因）**
+
+OpenVINO 是 Intel 自家推理引擎，对 Intel CPU 做了深度优化：
+- 算子融合: Conv+BN+ReLU 等常见模式融合为单个 kernel，减少内存读写
+- 图优化更激进: 常量折叠、layout 转换 (NCHW↔NHWC) 选最优内存排布
+- LATENCY 性能模式: 配置 `performance_hint: LATENCY`，针对低延迟专门调度
+
+ONNX Runtime 是通用引擎，跨所有硬件，优化深度天然不如"亲儿子"。
+
+**2. AMX / VNNI 指令集加速（关键加成）**
+
+Intel Xeon 具备 `amx_int8`、`avx512_vnni` 指令。OCR 模型大量是矩阵乘和卷积，
+VNNI/AMX 能让 INT8/低精度运算吞吐量翻倍甚至更多。
+
+AMD EPYC 9334 (Zen 4) 有 AVX-512 但没有 AMX，VNNI 支持有限。
+这是架构层面的硬差距。
+
+**3. 对比本身"不公平"**
+
+Intel 数据在受限沙箱 (~1 核, 8GB) 跑出，AMD 是真实 EPYC 硬件。
+按理 AMD 硬件更强，OCR 却慢一倍——恰恰说明 OpenVINO + Intel 指令集的
+组合优势压过了硬件差距。
+
+**4. 为什么 layout 检测 AMD 反而更快**
+
+layout 模型在两边都走相对"干净"的单次推理路径，算子融合红利小，
+此时 AMD EPYC 单核频率/缓存优势体现出来 (508ms vs 799ms)。
+而 OCR 是检测+识别两阶段、大量小算子，OpenVINO 的算子融合和调度优化红利最大。
+
+### 一句话总结
+
+OCR 慢不是因为 AMD 硬件差，而是 OpenVINO 在 Intel 上对 OCR 这类负载有
+专用算子融合 + AMX/VNNI 指令集双重加成，ONNX Runtime 在 AMD 上只能走通用路径，
+吃不到这些红利。这也解释了为什么 ZenDNN 停掉 ORT 插件是个遗憾——
+如果 AMD 有对等的 ORT 优化层，这个差距能缩小很多。
+
+---
+
 ## 参考资料
 
 - ZenDNN 官方: https://www.amd.com/zh-cn/developer/zendnn.html
